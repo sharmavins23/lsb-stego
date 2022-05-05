@@ -34,6 +34,13 @@ pixel value (despite being linear time), so I've added a shortcut for skipping
 this computation. It's recommended to only cloak smaller image files in large
 images for runtime.
 
+The implementation strategy for encoding (I feel) is overcomplicated compared to
+how it should to be, and as such is probably erroneous. A more planned strategy
+is needed.
+
+With the Spiderverse PNG, the total time to process and splice the image was
+~7.6 seconds.
+
 # License TL;DR
 
 This project is distributed under the MIT license. This is a paraphrasing of a
