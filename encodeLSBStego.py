@@ -1,16 +1,17 @@
 from PIL import Image
+import time
 
 
 # ===== File reading and input =================================================
 
 
 # Given an image filename, read the data and return a dictionary of filedata
-def readImage(filename):
+def readImage(filename, getBits=False):
     # Image object's baseline parameters
     imageData = {
         "width": 0,
         "height": 0,
-        "RGBData": [],  # Contains the RGB values as a list of objects
+        "RGBData": [],  # Contains the RGB values as a list of pixel tuples
         "bitString": ""  # Contains all bits as a long string
     }
 
@@ -18,41 +19,21 @@ def readImage(filename):
     imageFilepath = "./input/" + filename
 
     # Read the image file
-    pilImage = Image.open(imageFilepath)
+    pilImage = Image.open(imageFilepath).convert("RGB")
     # Get the width and height
     imageData["width"] = pilImage.width
     imageData["height"] = pilImage.height
 
     # Get the RGB data
-    imageData["RGBData"] = convertRGBListToJSON(list(pilImage.getdata()))
+    imageData["RGBData"] = list(pilImage.getdata())
 
     # Get the binary data as a string
-    imageData["bitString"] = convertRGBListToBits(imageData["RGBData"])
+    if getBits:
+        imageData["bitString"] = convertRGBListToBits(imageData["RGBData"])
+    else:
+        imageData["bitString"] = ""
 
     return imageData
-
-
-# Convert a list of RGB values to a list of JSON RGB value objects
-def convertRGBListToJSON(RGBList):
-    # Sanity check: List length is a multiple of 3
-    if len(RGBList) % 3 != 0:
-        raise ValueError(
-            "convertRGBListToJSON(): RGBList length is not a multiple of 3")
-
-    RGBJSONList = []
-
-    for i in range(0, len(RGBList), 3):
-        # Create a JSON object
-        RGBJson = {
-            'r': RGBList[i],
-            'g': RGBList[i + 1],
-            'b': RGBList[i + 2]
-        }
-
-        # Append the JSON object to the list
-        RGBJSONList.append(RGBJson)
-
-    return RGBJSONList
 
 
 # Convert an integer into a string of bits
@@ -74,11 +55,11 @@ def convertRGBListToBits(RGBList):
     # Iterate through each object
     for RGBObject in RGBList:
         # Get the red value
-        r = convertIntToBits(RGBObject["r"])
+        r = convertIntToBits(RGBObject[0])
         # Get the green value
-        g = convertIntToBits(RGBObject["g"])
+        g = convertIntToBits(RGBObject[1])
         # Get the blue value
-        b = convertIntToBits(RGBObject["b"])
+        b = convertIntToBits(RGBObject[2])
 
         # Concatenate the values
         bitString += r + g + b
@@ -91,13 +72,6 @@ def convertRGBListToBits(RGBList):
 
 # Check that the hidden file is sufficiently smaller than the visible file
 def checkFileSize(visibleImageData, hiddenImageData, encodingWH):
-    # Sanity check: Both items are multiples of 3
-    if len(visibleImageData["RGBData"]) % 3 != 0:
-        raise ValueError(
-            "checkFileSize(): Visible file is not a multiple of 3")
-    if len(hiddenImageData["RGBData"]) % 3 != 0:
-        raise ValueError("checkFileSize(): Hidden file is not a multiple of 3")
-
     # Encoding width and height in the last 2*encodingWH pixels of the visible image
     maxSize = pow(2, encodingWH) - 1
     # Sanity check - Hidden file must be smaller than 8192x8192
@@ -111,9 +85,9 @@ def checkFileSize(visibleImageData, hiddenImageData, encodingWH):
     supportedVisibleSize = hiddenFileSize * 8  # 8 bits per pixel
     visibleFileSize = visibleImageData["width"] * visibleImageData["height"]
 
-    if supportedVisibleSize < visibleFileSize:
+    if supportedVisibleSize > visibleFileSize:
         raise ValueError(
-            f"checkFileSize(): Hidden file is too large. Visible file will not support this (size needed is >={supportedVisibleSize})")
+            f"checkFileSize(): Hidden file is too large ({hiddenFileSize}). Visible file will not support this (size needed is >={supportedVisibleSize}, current size is {visibleFileSize})")
 
 
 # ===== Bit splicing ===========================================================
@@ -125,25 +99,54 @@ def encodeImages(visibleFileData, hiddenFileData, encodingWH):
     hiddenWStr = convertIntToBits(hiddenFileData["width"])
     hiddenHStr = convertIntToBits(hiddenFileData["height"])
 
-    # Iterate through the last encodingWH bits and replace with width/height
-    for i in range(0, encodingWH):
-        visibleFileData["bitString"][-i - 1] = hiddenWStr[i]
-        visibleFileData["bitString"][-i - 1 - encodingWH] = hiddenHStr[i]
+    # Splice in the width and height at the start
+    for i in range(len(hiddenWStr)):
+        visibleFileData["RGBData"][i] = (
+            visibleFileData["RGBData"][i][0],
+            visibleFileData["RGBData"][i][1] | int(hiddenWStr[i]),
+            visibleFileData["RGBData"][i][2] | int(hiddenHStr[i])
+        )
 
-    # Now iterate through all bits in the hidden file and splice them into the visible file
-    for i in range(0, len(hiddenFileData["bitString"])):
-        # Modify the RGB values of the visible file
-        visibleFileData["RGBData"][i]["r"] = int(
-            visibleFileData["RGBData"][i]["r"]) | int(hiddenFileData["bitString"][i])
-        visibleFileData["RGBData"][i]["g"] = int(
-            visibleFileData["RGBData"][i]["g"]) | int(hiddenFileData["bitString"][i])
-        visibleFileData["RGBData"][i]["b"] = int(
-            visibleFileData["RGBData"][i]["b"]) | int(hiddenFileData["bitString"][i])
+    # Splice in the hidden file bits in R, G, B channels
+    for i in range(len(hiddenWStr), len(hiddenFileData["bitString"])):
+        # Compute the 0-start index value
+        j = i - len(hiddenWStr)
+
+        try:
+            visibleFileData["RGBData"][i] = (
+                visibleFileData["RGBData"][i][0] | int(
+                    hiddenFileData["bitString"][3*j]),
+                visibleFileData["RGBData"][i][1] | int(
+                    hiddenFileData["bitString"][3*j+1]),
+                visibleFileData["RGBData"][i][2] | int(
+                    hiddenFileData["bitString"][3*j+2])
+            )
+        except IndexError:
+            # If the index is out of range, just move on
+            pass
 
     return visibleFileData
 
 
 # ===== File encoding and writing ==============================================
+
+
+# Given a dictionary of image data, write the data to a file
+def writeImage(imageData, filename):
+    # Construct image filepath
+    imageFilepath = "./output/" + filename
+
+    # Create the image file
+    pilImage = Image.new(
+        'RGB', (imageData["width"], imageData["height"]))
+
+    # Iterate through the RGB data and set the pixel values
+    for i in range(0, len(imageData["RGBData"])):
+        pilImage.putpixel((i % imageData["width"], i // imageData["width"]),
+                          (imageData["RGBData"][i][0], imageData["RGBData"][i][1], imageData["RGBData"][i][2]))
+
+    # Write the image file
+    pilImage.save(imageFilepath)
 
 
 # ===== Driver code ============================================================
@@ -153,22 +156,32 @@ def main():
     encodingWH = 13  # Number of pixels to encode width/height in
 
     # Read the input visible file to a dictionary object of RGB tuples
+    print("Reading visible image...")
     visibleFilename = "spiderverse.png"  # Do not include relative filepath
     visibleImageData = readImage(visibleFilename)
 
     # Read the input hidden file to a dictionary object
+    print("Reading hidden image...")
     hiddenFilename = "popcat.png"  # Do not include relative filepath
-    hiddenImageData = readImage(hiddenFilename)
+    hiddenImageData = readImage(hiddenFilename, getBits=True)
 
     # Verify sizing parameters of hidden and input files
+    print("Verifying file sizes...")
     checkFileSize(visibleImageData, hiddenImageData, encodingWH)
 
     # Encode the hidden file bits into the visible file bits
+    print("Encoding hidden file...")
     encodedImageData = encodeImages(
         visibleImageData, hiddenImageData, encodingWH)
 
     # Reform this into an image and write to output directory
+    print("Writing encoded image...")
+    writeImage(encodedImageData, f"{visibleFilename}_encoded.png")
+
+    print("Done.")
 
 
 if __name__ == '__main__':
+    startTime = time.time()
     main()
+    print(f"Total time: {time.time() - startTime}")

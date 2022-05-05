@@ -26,6 +26,14 @@ This image is featured in an article on
 [Hackaday](https://hackaday.com/2022/05/01/how-to-hide-a-photo-in-a-photo/), the
 concept of which I will attempt to create an encoding and decoding stream for.
 
+## Current progress
+
+Image encoding is done. However, for larger image sizes, this procedure is
+ridiculously slow. Most of the holdup occurs on the binary conversion of each
+pixel value (despite being linear time), so I've added a shortcut for skipping
+this computation. It's recommended to only cloak smaller image files in large
+images for runtime.
+
 # License TL;DR
 
 This project is distributed under the MIT license. This is a paraphrasing of a
