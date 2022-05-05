@@ -41,6 +41,9 @@ is needed.
 With the Spiderverse PNG, the total time to process and splice the image was
 ~7.6 seconds.
 
+A progress bar would also be nice to implement, similar to one in
+[this tutorial](https://www.youtube.com/watch?v=x1eaT88vJUA).
+
 # License TL;DR
 
 This project is distributed under the MIT license. This is a paraphrasing of a
